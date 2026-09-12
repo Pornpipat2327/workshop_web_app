@@ -32,4 +32,15 @@ app.MapGet("/api/todos/{id}", (int id) =>
     return todo is not null ? Results.Ok(todo) : Results.NotFound();    
 });
 
+app.MapPost("/api/todos", (TodoPostDto dto) =>
+{
+   var nextId = todos.Count == 0 ? 1 : todos.Max(t => t.id) + 1;
+
+   var todo = new TodoGetDto(nextId, dto.Title, false);
+   todos.Add(todo);
+
+   return Results.Created($"/api/todos/{todo.id}", todo); 
+});
+
+
 app.Run();
