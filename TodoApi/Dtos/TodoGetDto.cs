@@ -1,7 +1,7 @@
 namespace TodoApi.Dtos;
 
 public record TodoGetDto(
-    int Id,
+    int id,
     string Title,
     bool IsCompleted
 );
