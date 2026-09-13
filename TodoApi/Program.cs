@@ -5,11 +5,11 @@ using TodoApi.Dtos;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddOpenApi();
 // Add services to the container.
 builder.Services.AddDbContext<AppDBContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
@@ -95,24 +95,23 @@ var todoGroup = app.MapGroup("/api/todos").WithTags("Todos");
 
 todoGroup.MapGet("/", async (AppDBContext db) =>
 {
-    var todos = await db.Todos.ToListAsync();
+    var todos = await db.ToDoitems.ToListAsync();
 
     return todos.Count == 0 ? Results.NotFound() : Results.Ok(todos);
 });
 
-todoGroup.MapPost("/", async (AppDBContext db, TodoPostDto dto) =>
+todoGroup.MapPost("/", async (AppDBContext db, ToDoitem dto) =>
 {
-    var lastTodo = await db.Todos.OrderByDescending(t => t.Id).FirstOrDefaultAsync();
+    var lastTodo = await db.ToDoitems.OrderByDescending(t => t.Id).FirstOrDefaultAsync();
     var nextId = lastTodo is null ? 1 : lastTodo.Id + 1;
-    var todo = new TodoItem
+    var todo = new ToDoitem
     {
-        Id = nextId,
         Title = dto.Title,
         IsCompleted = false,
         CreatedAt = DateTime.UtcNow
     };
 
-    db.Todos.Add(todo);
+    db.ToDoitems.Add(todo);
     await db.SaveChangesAsync();
 
     var todoGetDto = new TodoGetDto(todo.Id, todo.Title, todo.IsCompleted);
