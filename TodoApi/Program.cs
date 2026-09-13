@@ -2,6 +2,11 @@ using Microsoft.EntityFrameworkCore;
 using TodoApi.Data;
 using TodoApi.Models;
 using TodoApi.Dtos;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +15,31 @@ builder.Services.AddOpenApi();
 builder.Services.AddDbContext<AppDBContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+
+var jwtKey = builder.Configuration["Jwt:Key"] 
+    ?? throw new InvalidOperationException("JWT Key is not configured.");
+
+builder.Services
+    .AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options => // <-- เปลี่ยนตรงนี้จาก AddBearerToken เป็น AddJwtBearer
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
@@ -20,8 +50,14 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
 
-var todoGroup = app.MapGroup("/api/todos").WithTags("Todos");
+var todoGroup = app
+    .MapGroup("/api/todos")
+    .WithTags("Todos")
+    .RequireAuthorization(); // <-- เพิ่มบรรทัดนี้เพื่อให้ทุก endpoint ในกลุ่มนี้ต้องการการยืนยันตัวตนs
+
 
 #region In-Memory Endpoints ...
 
@@ -93,6 +129,7 @@ var todoGroup = app.MapGroup("/api/todos").WithTags("Todos");
 
 #region Database Endpoints ...
 
+#region Authentication Endpoint ...
 todoGroup.MapGet("/", async (AppDBContext db) =>
 {
     var todos = await db.ToDoitems.ToListAsync();
@@ -120,5 +157,38 @@ todoGroup.MapPost("/", async (AppDBContext db, ToDoitem dto) =>
 });
 
 #endregion
+
+app.MapPost("/api/auth/login", (
+    LoginDto login,
+    IConfiguration configuration) =>
+{
+    if (login.Username != "student" || login.Password != "password")
+        return Results.Unauthorized();
+
+    var claims = new[]
+    {
+        new Claim(ClaimTypes.Name, login.Username)
+    };
+
+    var key = new SymmetricSecurityKey(
+        Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!));
+
+    var credentials = new SigningCredentials(
+        key,
+        SecurityAlgorithms.HmacSha256);
+
+    var token = new JwtSecurityToken(
+        issuer: configuration["Jwt:Issuer"],
+        audience: configuration["Jwt:Audience"],
+        claims: claims,
+        expires: DateTime.UtcNow.AddHours(1),
+        signingCredentials: credentials);
+
+    var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+    return Results.Ok(new LoginResponseDto(tokenString));
+});
+
 app.Run();
 
+
+#endregion
